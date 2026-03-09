@@ -15,18 +15,6 @@ const nextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = [
-        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
-        'firebase-admin',
-        'firebase-admin/app',
-        'firebase-admin/auth',
-        'firebase-admin/firestore',
-      ];
-    }
-    return config;
-  },
 };
 
 module.exports = nextConfig;

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard, TrendingUp, Users, DollarSign,
   Mail, FileText, MessageSquare, FileEdit, LogOut,
@@ -93,7 +94,10 @@ export function Sidebar() {
         <p className="text-white text-sm font-semibold">Admin</p>
         <p className="text-zinc-500 text-xs">blueprxnt.com</p>
         <Tooltip content="Sign out of the admin panel" side="right">
-          <button className="flex items-center gap-2 mt-3 text-red-400 hover:text-red-300 text-xs font-medium transition-colors">
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="flex items-center gap-2 mt-3 text-red-400 hover:text-red-300 text-xs font-medium transition-colors"
+          >
             <LogOut className="w-3.5 h-3.5" />
             <span>Logout</span>
           </button>

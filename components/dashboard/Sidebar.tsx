@@ -11,17 +11,17 @@ import {
 import { Tooltip } from '@/components/ui/tooltip';
 
 const navItems = [
+  { title: 'Site Content', href: '/dashboard/content', icon: FileEdit, tip: 'Visual editor — click anything on your live site to edit it' },
   { title: 'Overview', href: '/dashboard', icon: LayoutDashboard, tip: 'Dashboard summary — stats, recent activity, quick actions' },
-  { title: 'Analytics', href: '/dashboard/analytics', icon: TrendingUp, tip: 'Site traffic, page views, and performance metrics' },
-  { title: 'Sales Pipeline', href: '/dashboard/pipeline', icon: Users, tip: 'Track leads and coaching prospects through your sales funnel' },
-  { title: 'Coaching Packages', href: '/dashboard/packages', icon: DollarSign, tip: 'Manage your coaching tiers, pricing, and features' },
-  { title: 'Newsletter', href: '/dashboard/newsletter', icon: Mail, tip: 'View and manage email newsletter subscribers' },
   { title: 'Applications', href: '/dashboard/applications', icon: FileText, tip: 'Review coaching applications submitted from your website' },
   { title: 'Messages', href: '/dashboard/messages', icon: MessageSquare, tip: 'Read and reply to contact form messages' },
-  { title: 'Site Content', href: '/dashboard/content', icon: FileEdit, tip: 'Visual editor — click anything on your live site to edit it' },
+  { title: 'Coaching Packages', href: '/dashboard/packages', icon: DollarSign, tip: 'Manage your coaching tiers, pricing, and features' },
 ];
 
 const comingSoonItems = [
+  { title: 'Analytics', href: '/dashboard/analytics', icon: TrendingUp, tip: 'Site traffic, page views, and performance metrics' },
+  { title: 'Sales Pipeline', href: '/dashboard/pipeline', icon: Users, tip: 'Track leads and coaching prospects through your sales funnel' },
+  { title: 'Newsletter', href: '/dashboard/newsletter', icon: Mail, tip: 'View and manage email newsletter subscribers' },
   { title: 'Email Campaigns', href: '/dashboard/campaigns', icon: Send, tip: 'Design and send email campaigns to your subscribers' },
   { title: 'Booking Calendar', href: '/dashboard/calendar', icon: CalendarDays, tip: 'Schedule and manage 1:1 coaching sessions' },
   { title: 'Payments & Billing', href: '/dashboard/payments', icon: CreditCard, tip: 'Track revenue, invoices, and payment history' },

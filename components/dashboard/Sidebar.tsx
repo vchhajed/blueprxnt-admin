@@ -3,27 +3,60 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Mail,
-  FileText,
-  MessageSquare,
-  FileEdit,
-  X,
-  LogOut,
+  LayoutDashboard, TrendingUp, Users, DollarSign,
+  Mail, FileText, MessageSquare, FileEdit, LogOut,
 } from 'lucide-react';
+import { Tooltip } from '@/components/ui/tooltip';
 
 const navItems = [
-  { title: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-  { title: 'Analytics', href: '/dashboard/analytics', icon: TrendingUp },
-  { title: 'Sales Pipeline', href: '/dashboard/pipeline', icon: Users },
-  { title: 'Coaching Packages', href: '/dashboard/packages', icon: DollarSign },
-  { title: 'Newsletter', href: '/dashboard/newsletter', icon: Mail },
-  { title: 'Applications', href: '/dashboard/applications', icon: FileText },
-  { title: 'Messages', href: '/dashboard/messages', icon: MessageSquare },
-  { title: 'Site Content', href: '/dashboard/content', icon: FileEdit },
+  {
+    title: 'Overview',
+    href: '/dashboard',
+    icon: LayoutDashboard,
+    tip: 'Dashboard summary — stats, recent activity, quick actions',
+  },
+  {
+    title: 'Analytics',
+    href: '/dashboard/analytics',
+    icon: TrendingUp,
+    tip: 'Site traffic, page views, and performance metrics',
+  },
+  {
+    title: 'Sales Pipeline',
+    href: '/dashboard/pipeline',
+    icon: Users,
+    tip: 'Track leads and coaching prospects through your sales funnel',
+  },
+  {
+    title: 'Coaching Packages',
+    href: '/dashboard/packages',
+    icon: DollarSign,
+    tip: 'Manage your coaching tiers, pricing, and features',
+  },
+  {
+    title: 'Newsletter',
+    href: '/dashboard/newsletter',
+    icon: Mail,
+    tip: 'View and manage email newsletter subscribers',
+  },
+  {
+    title: 'Applications',
+    href: '/dashboard/applications',
+    icon: FileText,
+    tip: 'Review coaching applications submitted from your website',
+  },
+  {
+    title: 'Messages',
+    href: '/dashboard/messages',
+    icon: MessageSquare,
+    tip: 'Read and reply to contact form messages',
+  },
+  {
+    title: 'Site Content',
+    href: '/dashboard/content',
+    icon: FileEdit,
+    tip: 'Visual editor — click anything on your live site to edit it',
+  },
 ];
 
 export function Sidebar() {
@@ -37,9 +70,6 @@ export function Sidebar() {
           <h1 className="text-white font-display font-bold text-lg tracking-wide">BLUEPRXNT</h1>
           <p className="text-sky-500 text-xs mt-0.5">Admin Panel</p>
         </div>
-        <button className="text-zinc-600 hover:text-white transition-colors">
-          <X className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Navigation */}
@@ -50,18 +80,19 @@ export function Sidebar() {
           const Icon = item.icon;
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
-                isActive
-                  ? 'text-sky-400 bg-sky-500/10 border-l-2 border-sky-500'
-                  : 'text-zinc-500 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Icon className="w-[18px] h-[18px]" />
-              <span>{item.title}</span>
-            </Link>
+            <Tooltip key={item.href} content={item.tip} side="right" delay={500}>
+              <Link
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all w-full ${
+                  isActive
+                    ? 'text-sky-400 bg-sky-500/10 border-l-2 border-sky-500'
+                    : 'text-zinc-500 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px] shrink-0" />
+                <span>{item.title}</span>
+              </Link>
+            </Tooltip>
           );
         })}
       </nav>
@@ -69,11 +100,13 @@ export function Sidebar() {
       {/* User Profile */}
       <div className="px-4 py-5 border-t border-[#27272a]">
         <p className="text-white text-sm font-semibold">Admin</p>
-        <p className="text-zinc-500 text-xs">admin@blueprxnt.com</p>
-        <button className="flex items-center gap-2 mt-3 text-red-400 hover:text-red-300 text-xs font-medium transition-colors">
-          <LogOut className="w-3.5 h-3.5" />
-          <span>Logout</span>
-        </button>
+        <p className="text-zinc-500 text-xs">blueprxnt.com</p>
+        <Tooltip content="Sign out of the admin panel" side="right">
+          <button className="flex items-center gap-2 mt-3 text-red-400 hover:text-red-300 text-xs font-medium transition-colors">
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Logout</span>
+          </button>
+        </Tooltip>
       </div>
     </aside>
   );

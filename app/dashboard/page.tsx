@@ -3,23 +3,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
-  FileText,
-  Mail,
-  Package,
-  MessageSquare,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Eye,
-  ArrowUpRight,
-  ArrowDownRight,
+  FileText, Mail, Package, MessageSquare,
+  Users, ArrowUpRight, ArrowDownRight, HelpCircle,
 } from 'lucide-react';
+import { Tooltip } from '@/components/ui/tooltip';
 
 const stats = [
-  { label: 'Total Applications', value: '24', change: '+12%', up: true, icon: FileText, color: '#0ea5e9' },
-  { label: 'Newsletter Subscribers', value: '1,247', change: '+8%', up: true, icon: Mail, color: '#6366f1' },
-  { label: 'Active Packages', value: '3', change: '0%', up: true, icon: Package, color: '#f59e0b' },
-  { label: 'Unread Messages', value: '12', change: '+3', up: false, icon: MessageSquare, color: '#ef4444' },
+  { label: 'Total Applications', value: '24', change: '+12%', up: true, icon: FileText, color: '#0ea5e9', tip: 'Total coaching applications submitted via your website' },
+  { label: 'Newsletter Subscribers', value: '1,247', change: '+8%', up: true, icon: Mail, color: '#6366f1', tip: 'Total email addresses subscribed to your newsletter' },
+  { label: 'Active Packages', value: '3', change: '0%', up: true, icon: Package, color: '#f59e0b', tip: 'Number of coaching packages currently listed on your site' },
+  { label: 'Unread Messages', value: '12', change: '+3', up: false, icon: MessageSquare, color: '#ef4444', tip: 'Contact form messages you haven\'t read yet' },
 ];
 
 const recentActivity = [
@@ -57,9 +50,14 @@ export default function OverviewPage() {
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${stat.color}15` }}>
                   <Icon className="w-5 h-5" style={{ color: stat.color }} />
                 </div>
-                <div className={`flex items-center gap-1 text-xs font-medium ${stat.up ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {stat.up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                  {stat.change}
+                <div className="flex items-center gap-2">
+                  <Tooltip content={stat.tip} side="top">
+                    <HelpCircle className="w-3.5 h-3.5 text-zinc-700 cursor-help" />
+                  </Tooltip>
+                  <div className={`flex items-center gap-1 text-xs font-medium ${stat.up ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {stat.up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                    {stat.change}
+                  </div>
                 </div>
               </div>
               <p className="text-2xl font-bold text-white">{stat.value}</p>
@@ -118,18 +116,24 @@ export default function OverviewPage() {
           <div className="mt-6 pt-4 border-t border-zinc-800">
             <h3 className="text-white text-sm font-semibold mb-3">System Status</h3>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                <span className="text-xs text-zinc-400">Website Online</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                <span className="text-xs text-zinc-400">Database Connected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-amber-400 rounded-full" />
-                <span className="text-xs text-zinc-400">Backup: 1 hour ago</span>
-              </div>
+              <Tooltip content="Your blueprxnt-site is live and accessible to visitors" side="left">
+                <div className="flex items-center gap-2 cursor-help w-fit">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+                  <span className="text-xs text-zinc-400">Website Online</span>
+                </div>
+              </Tooltip>
+              <Tooltip content="Admin dashboard is connected to its database" side="left">
+                <div className="flex items-center gap-2 cursor-help w-fit">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+                  <span className="text-xs text-zinc-400">Database Connected</span>
+                </div>
+              </Tooltip>
+              <Tooltip content="Last automatic backup was 1 hour ago" side="left">
+                <div className="flex items-center gap-2 cursor-help w-fit">
+                  <div className="w-2 h-2 bg-amber-400 rounded-full" />
+                  <span className="text-xs text-zinc-400">Backup: 1 hour ago</span>
+                </div>
+              </Tooltip>
             </div>
           </div>
         </div>

@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Eye, EyeOff, X, Check, Upload, Loader2, Send,
-  Monitor, RefreshCw, Type, ImageIcon,
+  Monitor, RefreshCw, Type, ImageIcon, HelpCircle, Info,
 } from 'lucide-react';
+import { Tooltip } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/use-toast';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -215,48 +216,61 @@ export default function ContentPage() {
       <div className="flex items-center gap-3 px-4 py-3 bg-zinc-950 border-b border-zinc-800 shrink-0">
         <Monitor className="w-4 h-4 text-sky-500" />
         <span className="text-sm font-semibold text-white">Visual Editor</span>
+        <Tooltip content="Click any text, image, or section border on the preview to edit it" side="bottom">
+          <HelpCircle className="w-3.5 h-3.5 text-zinc-600 cursor-help" />
+        </Tooltip>
         <span className="text-zinc-700">|</span>
 
         {/* Page Tabs */}
         <div className="flex gap-1">
           {PAGES.map(p => (
-            <button
-              key={p.file}
-              onClick={() => switchPage(p.file)}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                activePage === p.file
-                  ? 'bg-sky-500 text-black'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              {p.label}
-            </button>
+            <Tooltip key={p.file} content={`Preview and edit your ${p.label} page`} side="bottom">
+              <button
+                onClick={() => switchPage(p.file)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  activePage === p.file
+                    ? 'bg-sky-500 text-black'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                {p.label}
+              </button>
+            </Tooltip>
           ))}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={reloadIframe}
-            className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-all"
-            title="Reload preview"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <Tooltip content="Reload the preview (unsaved visual changes will reset)" side="bottom">
+            <button
+              onClick={reloadIframe}
+              className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </Tooltip>
 
           {changeCount > 0 && (
-            <span className="text-xs text-amber-400 font-medium">
-              {changeCount} unsaved change{changeCount !== 1 ? 's' : ''}
-            </span>
+            <Tooltip content="These changes are queued locally — click Publish to save them to your live site" side="bottom">
+              <span className="flex items-center gap-1 text-xs text-amber-400 font-medium cursor-help">
+                <Info className="w-3 h-3" />
+                {changeCount} unsaved change{changeCount !== 1 ? 's' : ''}
+              </span>
+            </Tooltip>
           )}
 
-          <button
-            onClick={publish}
-            disabled={changeCount === 0 || publishing}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-sky-500 text-black text-xs font-bold rounded-md hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          <Tooltip
+            content={changeCount === 0 ? 'No changes to publish yet' : `Commit ${changeCount} change${changeCount !== 1 ? 's' : ''} to GitHub — your live site will redeploy automatically`}
+            side="bottom"
           >
-            {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            {publishing ? 'Publishing...' : `Publish${changeCount > 0 ? ` (${changeCount})` : ''}`}
-          </button>
+            <button
+              onClick={publish}
+              disabled={changeCount === 0 || publishing}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-sky-500 text-black text-xs font-bold rounded-md hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              {publishing ? 'Publishing...' : `Publish${changeCount > 0 ? ` (${changeCount})` : ''}`}
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -331,12 +345,14 @@ export default function ContentPage() {
                         autoFocus
                       />
                     </div>
-                    <button
-                      onClick={applyText}
-                      className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 text-black text-sm font-bold rounded-lg hover:bg-sky-400 transition-all"
-                    >
-                      <Check className="w-4 h-4" /> Apply Change
-                    </button>
+                    <Tooltip content="Queue this change — it won't go live until you click Publish" side="top">
+                      <button
+                        onClick={applyText}
+                        className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 text-black text-sm font-bold rounded-lg hover:bg-sky-400 transition-all"
+                      >
+                        <Check className="w-4 h-4" /> Apply Change
+                      </button>
+                    </Tooltip>
                   </>
                 )}
 
@@ -380,12 +396,14 @@ export default function ContentPage() {
                         placeholder="Describe the image..."
                       />
                     </div>
-                    <button
-                      onClick={applyImage}
-                      className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 text-black text-sm font-bold rounded-lg hover:bg-sky-400 transition-all"
-                    >
-                      <Check className="w-4 h-4" /> Apply Image
-                    </button>
+                    <Tooltip content="Queue this image change — it won't go live until you click Publish" side="top">
+                      <button
+                        onClick={applyImage}
+                        className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 text-black text-sm font-bold rounded-lg hover:bg-sky-400 transition-all"
+                      >
+                        <Check className="w-4 h-4" /> Apply Image
+                      </button>
+                    </Tooltip>
                   </>
                 )}
 
@@ -401,26 +419,30 @@ export default function ContentPage() {
                       <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
                         <p className="text-sm font-medium text-white mb-3">Section Visibility</p>
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => applySection(true)}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                              editVisible
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                            }`}
-                          >
-                            <Eye className="w-4 h-4" /> Show
-                          </button>
-                          <button
-                            onClick={() => applySection(false)}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                              !editVisible
-                                ? 'bg-red-500 text-white'
-                                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                            }`}
-                          >
-                            <EyeOff className="w-4 h-4" /> Hide
-                          </button>
+                          <Tooltip content="Make this section visible on your live site" side="top">
+                            <button
+                              onClick={() => applySection(true)}
+                              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                editVisible
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                              }`}
+                            >
+                              <Eye className="w-4 h-4" /> Show
+                            </button>
+                          </Tooltip>
+                          <Tooltip content="Hide this section from visitors — you can re-enable it anytime" side="top">
+                            <button
+                              onClick={() => applySection(false)}
+                              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                !editVisible
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                              }`}
+                            >
+                              <EyeOff className="w-4 h-4" /> Hide
+                            </button>
+                          </Tooltip>
                         </div>
                       </div>
 

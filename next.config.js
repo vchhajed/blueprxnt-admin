@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@vercel/blob', 'firebase-admin', 'firebase-admin/app', 'firebase-admin/auth', 'firebase-admin/firestore'],
+    serverComponentsExternalPackages: ['@vercel/blob'],
   },
   images: {
     remotePatterns: [
@@ -14,6 +14,18 @@ const nextConfig = {
         hostname: '**.public.blob.vercel-storage.com',
       },
     ],
+  },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
+        'firebase-admin',
+        'firebase-admin/app',
+        'firebase-admin/auth',
+        'firebase-admin/firestore',
+      ];
+    }
+    return config;
   },
 };
 

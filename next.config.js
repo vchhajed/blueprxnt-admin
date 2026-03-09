@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@vercel/blob'],
+    serverComponentsExternalPackages: ['@vercel/blob', 'firebase-admin', 'firebase-admin/app', 'firebase-admin/auth', 'firebase-admin/firestore'],
   },
   images: {
     remotePatterns: [

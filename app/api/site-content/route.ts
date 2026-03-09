@@ -20,6 +20,8 @@ const SKIP_CLASSES = [
   'trusted-divider-line', 'mobile-menu-toggle', 'footer-bottom-links',
 ];
 
+// ── Interfaces ────────────────────────────────────────────────────────────────
+
 interface ScannedField {
   id: string; file: string; className: string; tag: string;
   text: string; section: string; occurrence: number; type: 'text';
@@ -32,7 +34,34 @@ interface ScannedTestimonial {
   id: string; file: string; badge: string; text: string;
   author: string; position: string; section: string; occurrence: number; type: 'testimonial';
 }
-type ScannedContent = ScannedField | ScannedImage | ScannedTestimonial;
+interface ScannedSection {
+  id: string; file: string; tag: string; htmlId: string; htmlClass: string;
+  label: string; visible: boolean; selectorKey: string; type: 'section';
+}
+interface ScannedMeta {
+  id: string; file: string; metaKey: 'title' | 'description'; value: string; type: 'meta';
+}
+interface ScannedNavLink {
+  id: string; file: string; href: string; text: string; occurrence: number; type: 'nav-link';
+}
+interface ScannedListItem {
+  id: string; file: string; itemClass: string; index: number; text: string;
+  visible: boolean; section: string; type: 'list-item';
+}
+interface ScannedLink {
+  id: string; file: string; className: string; href: string; text: string;
+  occurrence: number; section: string; type: 'link';
+}
+
+type ScannedContent =
+  | ScannedField
+  | ScannedImage
+  | ScannedTestimonial
+  | ScannedSection
+  | ScannedMeta
+  | ScannedNavLink
+  | ScannedListItem
+  | ScannedLink;
 
 // ── GitHub helpers ────────────────────────────────────────────────────────────
 
@@ -75,7 +104,7 @@ async function githubPut(filePath: string, content: string, sha: string, message
   }
 }
 
-// ── Scanners ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function detectSections(html: string) {
   const sections: { name: string; pos: number }[] = [];
@@ -97,6 +126,8 @@ function getSection(pos: number, sections: { name: string; pos: number }[]) {
   }
   return current;
 }
+
+// ── Scanners ──────────────────────────────────────────────────────────────────
 
 function scanTextFields(html: string, fileName: string, sections: ReturnType<typeof detectSections>): ScannedField[] {
   const fields: ScannedField[] = [];
@@ -164,6 +195,228 @@ function scanTestimonials(html: string, fileName: string, sections: ReturnType<t
   return testimonials;
 }
 
+function scanSections(html: string, fileName: string): ScannedSection[] {
+  const result: ScannedSection[] = [];
+  const re = /<!--\s*([^-]+?)\s*-->\s*\n\s*<(section|nav|footer)([^>]*)>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const label = m[1].trim();
+    const tag = m[2].toLowerCase();
+    const attrs = m[3];
+
+    const idMatch = attrs.match(/id="([^"]+)"/);
+    const classMatch = attrs.match(/class="([^"]+)"/);
+
+    const htmlId = idMatch ? idMatch[1] : '';
+    const htmlClass = classMatch ? classMatch[1].split(/\s+/)[0] : '';
+    const selectorKey = htmlId || htmlClass;
+
+    if (!selectorKey) continue;
+
+    const visible = !/style="[^"]*display\s*:\s*none[^"]*"/.test(attrs);
+
+    result.push({
+      id: `${fileName}::section::${selectorKey}`,
+      file: fileName, tag, htmlId, htmlClass, label, visible, selectorKey, type: 'section',
+    });
+  }
+  return result;
+}
+
+function scanMeta(html: string, fileName: string): ScannedMeta[] {
+  const result: ScannedMeta[] = [];
+
+  const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+  if (titleMatch) {
+    result.push({
+      id: `${fileName}::meta::title`,
+      file: fileName, metaKey: 'title', value: titleMatch[1].trim(), type: 'meta',
+    });
+  }
+
+  const descMatch = html.match(/<meta\s+name="description"\s+content="([^"]*)"/i)
+    || html.match(/<meta\s+content="([^"]*)"\s+name="description"/i);
+  if (descMatch) {
+    result.push({
+      id: `${fileName}::meta::description`,
+      file: fileName, metaKey: 'description', value: descMatch[1].trim(), type: 'meta',
+    });
+  }
+
+  return result;
+}
+
+function scanNavLinks(html: string, fileName: string): ScannedNavLink[] {
+  const result: ScannedNavLink[] = [];
+
+  // Extract the nav-menu ul block
+  const navMenuMatch = html.match(/<ul\s+class="nav-menu"[^>]*>([\s\S]*?)<\/ul>/i);
+  if (!navMenuMatch) return result;
+
+  const navContent = navMenuMatch[1];
+  const re = /<a\s+href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
+  let m;
+  let occurrence = 0;
+  while ((m = re.exec(navContent)) !== null) {
+    const href = m[1].trim();
+    const text = m[2].trim();
+    if (!text) continue;
+    occurrence++;
+    result.push({
+      id: `${fileName}::nav-link::${occurrence}`,
+      file: fileName, href, text, occurrence, type: 'nav-link',
+    });
+  }
+  return result;
+}
+
+function scanListItems(html: string, fileName: string, sections: ReturnType<typeof detectSections>): ScannedListItem[] {
+  const result: ScannedListItem[] = [];
+
+  // span-based: trusted-name, trusted-name-sm, tag
+  for (const itemClass of ['trusted-name', 'trusted-name-sm', 'tag']) {
+    const re = new RegExp(`<span\\s+class="${itemClass}"([^>]*)>([^<]*)<\\/span>`, 'gi');
+    let m;
+    let index = 0;
+    while ((m = re.exec(html)) !== null) {
+      const attrs = m[1];
+      const text = m[2].trim();
+      index++;
+      const visible = !/style="[^"]*display\s*:\s*none[^"]*"/.test(attrs);
+      result.push({
+        id: `${fileName}::list-item::${itemClass}::${index}`,
+        file: fileName, itemClass, index, text, visible,
+        section: getSection(m.index, sections), type: 'list-item',
+      });
+    }
+  }
+
+  // problem-item
+  {
+    const re = /<div\s+class="problem-item"([^>]*)>([\s\S]*?)<\/div>/gi;
+    let m;
+    let index = 0;
+    while ((m = re.exec(html)) !== null) {
+      const attrs = m[1];
+      const inner = m[2];
+      const pMatch = inner.match(/<p[^>]*>([^<]*)<\/p>/i);
+      const text = pMatch ? pMatch[1].trim() : '';
+      if (!text) continue;
+      index++;
+      const visible = !/style="[^"]*display\s*:\s*none[^"]*"/.test(attrs);
+      result.push({
+        id: `${fileName}::list-item::problem-item::${index}`,
+        file: fileName, itemClass: 'problem-item', index, text, visible,
+        section: getSection(m.index, sections), type: 'list-item',
+      });
+    }
+  }
+
+  // result-item
+  {
+    const re = /<div\s+class="result-item"([^>]*)>([\s\S]*?)<\/div>/gi;
+    let m;
+    let index = 0;
+    while ((m = re.exec(html)) !== null) {
+      const attrs = m[1];
+      const inner = m[2];
+      // skip svg, get span text
+      const spanMatch = inner.match(/<span[^>]*>([^<]+)<\/span>/i);
+      const text = spanMatch ? spanMatch[1].trim() : '';
+      if (!text) continue;
+      index++;
+      const visible = !/style="[^"]*display\s*:\s*none[^"]*"/.test(attrs);
+      result.push({
+        id: `${fileName}::list-item::result-item::${index}`,
+        file: fileName, itemClass: 'result-item', index, text, visible,
+        section: getSection(m.index, sections), type: 'list-item',
+      });
+    }
+  }
+
+  // process-card-new: title and desc as separate items
+  {
+    const re = /<div\s+class="process-card-new"[^>]*>([\s\S]*?)<\/div>/gi;
+    let m;
+    let cardIndex = 0;
+    while ((m = re.exec(html)) !== null) {
+      const inner = m[1];
+      cardIndex++;
+      const titleMatch = inner.match(/<h3\s+class="process-title"[^>]*>([^<]+)<\/h3>/i);
+      const descMatch = inner.match(/<p\s+class="process-desc"[^>]*>([\s\S]*?)<\/p>/i);
+
+      if (titleMatch) {
+        result.push({
+          id: `${fileName}::process::${cardIndex}::title`,
+          file: fileName, itemClass: 'process-card-new', index: cardIndex,
+          text: titleMatch[1].trim(), visible: true,
+          section: getSection(m.index, sections), type: 'list-item',
+        });
+      }
+      if (descMatch) {
+        result.push({
+          id: `${fileName}::process::${cardIndex}::desc`,
+          file: fileName, itemClass: 'process-card-new-desc', index: cardIndex,
+          text: descMatch[1].replace(/<[^>]+>/g, '').trim(), visible: true,
+          section: getSection(m.index, sections), type: 'list-item',
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+function scanLinks(html: string, fileName: string, sections: ReturnType<typeof detectSections>): ScannedLink[] {
+  const result: ScannedLink[] = [];
+  const classCount: Record<string, number> = {};
+
+  // Match <a> tags with btn or nav-cta class
+  const patterns = [
+    /<a\s+([^>]*class="([^"]*(?:btn|nav-cta|cta)[^"]*)"[^>]*href="([^"]+)"[^>]*)>([^<]+)</gi,
+    /<a\s+([^>]*href="([^"]+)"[^>]*class="([^"]*(?:btn|nav-cta|cta)[^"]*)"[^>]*)>([^<]+)</gi,
+  ];
+
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      // Determine which capture group has what based on pattern
+      let className: string;
+      let href: string;
+      let text: string;
+
+      // Try to extract from attributes string
+      const fullAttrs = m[1];
+      const classInAttrs = fullAttrs.match(/class="([^"]+)"/);
+      const hrefInAttrs = fullAttrs.match(/href="([^"]+)"/);
+      const textRaw = m[4] || m[3] || '';
+
+      className = classInAttrs ? classInAttrs[1].split(/\s+/)[0] : '';
+      href = hrefInAttrs ? hrefInAttrs[1] : '';
+      text = textRaw.trim();
+
+      if (!className || !href || !text) continue;
+      // Deduplicate by position
+      const key = `${m.index}`;
+      if (classCount[key]) continue;
+      classCount[key] = 1;
+
+      const classKey = `${fileName}:${className}`;
+      if (!classCount[classKey]) classCount[classKey] = 0;
+      classCount[classKey]++;
+      const occurrence = classCount[classKey];
+
+      result.push({
+        id: `${fileName}::link::${className}::${occurrence}`,
+        file: fileName, className, href, text, occurrence,
+        section: getSection(m.index, sections), type: 'link',
+      });
+    }
+  }
+
+  return result;
+}
+
 // ── Replacers ─────────────────────────────────────────────────────────────────
 
 function replaceByClassOccurrence(html: string, className: string, occurrence: number, newText: string) {
@@ -212,17 +465,196 @@ function replaceTestimonial(html: string, occurrence: number, newBadge: string, 
   });
 }
 
+function toggleSectionVisibility(html: string, selectorKey: string, visible: boolean): string {
+  const escaped = selectorKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Match sections by id or class starting with selectorKey
+  const re = new RegExp(
+    `(<(?:section|nav|footer)([^>]*(?:id="${escaped}"|class="${escaped}(?:\\s[^"]*)?"))[^>]*)(>)`,
+    'gi'
+  );
+  return html.replace(re, (full, openWithAttrs, attrs, closingBracket) => {
+    if (visible) {
+      // Remove display:none style
+      const cleaned = openWithAttrs.replace(/\s*style="[^"]*display\s*:\s*none[^"]*"/, '');
+      return `${cleaned}${closingBracket}`;
+    } else {
+      // Add display:none if not already present
+      if (/style="[^"]*display\s*:\s*none/.test(openWithAttrs)) return full;
+      if (/style="/.test(openWithAttrs)) {
+        return openWithAttrs.replace(/style="/, 'style="display:none;') + closingBracket;
+      }
+      return `${openWithAttrs} style="display:none"${closingBracket}`;
+    }
+  });
+}
+
+function updateMeta(html: string, metaKey: 'title' | 'description', newValue: string): string {
+  if (metaKey === 'title') {
+    return html.replace(/<title>[^<]*<\/title>/i, `<title>${newValue}</title>`);
+  } else {
+    // Try both attribute orders
+    let updated = html.replace(
+      /(<meta\s+name="description"\s+content=")[^"]*(")/i,
+      `$1${newValue}$2`
+    );
+    if (updated === html) {
+      updated = html.replace(
+        /(<meta\s+content=")[^"]*("\s+name="description")/i,
+        `$1${newValue}$2`
+      );
+    }
+    return updated;
+  }
+}
+
+function updateNavLink(html: string, occurrence: number, newText: string, newHref: string): string {
+  // Find the nav-menu ul, then replace within it
+  return html.replace(
+    /(<ul\s+class="nav-menu"[^>]*>)([\s\S]*?)(<\/ul>)/i,
+    (full, open, inner, close) => {
+      let count = 0;
+      const updated = inner.replace(
+        /(<a\s+href=")[^"]*("[^>]*>)([^<]+)(<\/a>)/gi,
+        (m: string, before: string, mid: string, text: string, end: string) => {
+          count++;
+          if (count !== occurrence) return m;
+          // Update href
+          const newBefore = before + newHref + '"';
+          return `${newBefore}${mid}${newText}${end}`;
+        }
+      );
+      return `${open}${updated}${close}`;
+    }
+  );
+}
+
+function updateListItem(html: string, itemClass: string, index: number, newText: string, visible: boolean): string {
+  if (itemClass === 'problem-item') {
+    let count = 0;
+    return html.replace(
+      /<div\s+class="problem-item"([^>]*)>([\s\S]*?)<\/div>/gi,
+      (full: string, attrs: string, inner: string) => {
+        count++;
+        if (count !== index) return full;
+        const updatedInner = inner.replace(/<p([^>]*)>[^<]*<\/p>/i, `<p$1>${newText}</p>`);
+        const newAttrs = visible
+          ? attrs.replace(/\s*style="[^"]*display\s*:\s*none[^"]*"/, '')
+          : /style="/.test(attrs)
+            ? attrs.replace(/style="/, 'style="display:none;')
+            : attrs + ' style="display:none"';
+        return `<div class="problem-item"${newAttrs}>${updatedInner}</div>`;
+      }
+    );
+  }
+
+  if (itemClass === 'result-item') {
+    let count = 0;
+    return html.replace(
+      /<div\s+class="result-item"([^>]*)>([\s\S]*?)<\/div>/gi,
+      (full: string, attrs: string, inner: string) => {
+        count++;
+        if (count !== index) return full;
+        const updatedInner = inner.replace(/(<span[^>]*>)[^<]*(<\/span>)/i, `$1${newText}$2`);
+        const newAttrs = visible
+          ? attrs.replace(/\s*style="[^"]*display\s*:\s*none[^"]*"/, '')
+          : /style="/.test(attrs)
+            ? attrs.replace(/style="/, 'style="display:none;')
+            : attrs + ' style="display:none"';
+        return `<div class="result-item"${newAttrs}>${updatedInner}</div>`;
+      }
+    );
+  }
+
+  if (itemClass === 'process-card-new') {
+    // Update title of process card
+    let count = 0;
+    return html.replace(
+      /(<div\s+class="process-card-new"[^>]*>[\s\S]*?<h3\s+class="process-title"[^>]*>)[^<]*(<\/h3>)/gi,
+      (full: string, before: string, after: string) => {
+        count++;
+        if (count !== index) return full;
+        return `${before}${newText}${after}`;
+      }
+    );
+  }
+
+  if (itemClass === 'process-card-new-desc') {
+    // Update desc of process card
+    let count = 0;
+    return html.replace(
+      /(<div\s+class="process-card-new"[^>]*>[\s\S]*?<p\s+class="process-desc"[^>]*>)[^<]*([\s\S]*?)(<\/p>)/gi,
+      (full: string, before: string, _mid: string, after: string) => {
+        count++;
+        if (count !== index) return full;
+        return `${before}${newText}${after}`;
+      }
+    );
+  }
+
+  // span-based items: trusted-name, trusted-name-sm, tag
+  let count = 0;
+  const escapedClass = itemClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(
+    new RegExp(`<span\\s+class="${escapedClass}"([^>]*)>[^<]*<\\/span>`, 'gi'),
+    (full: string, attrs: string) => {
+      count++;
+      if (count !== index) return full;
+      const newAttrs = visible
+        ? attrs.replace(/\s*style="[^"]*display\s*:\s*none[^"]*"/, '')
+        : /style="/.test(attrs)
+          ? attrs.replace(/style="/, 'style="display:none;')
+          : attrs + ' style="display:none"';
+      return `<span class="${itemClass}"${newAttrs}>${newText}</span>`;
+    }
+  );
+}
+
+function updateLink(html: string, className: string, occurrence: number, newHref: string, newText: string): string {
+  const escapedClass = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `(<a[^>]*class="[^"]*${escapedClass}[^"]*"[^>]*href=")[^"]*("[^>]*>)[^<]*(</a>)`,
+    'gi'
+  );
+  let count = 0;
+  let updated = html.replace(re, (full: string, before: string, mid: string, end: string) => {
+    count++;
+    if (count !== occurrence) return full;
+    return `${before}${newHref}${mid}${newText}${end}`;
+  });
+
+  if (count < occurrence) {
+    // try alternate attr order (href before class)
+    const re2 = new RegExp(
+      `(<a[^>]*href=")[^"]*("[^>]*class="[^"]*${escapedClass}[^"]*"[^>]*>)[^<]*(</a>)`,
+      'gi'
+    );
+    count = 0;
+    updated = html.replace(re2, (full: string, before: string, mid: string, end: string) => {
+      count++;
+      if (count !== occurrence) return full;
+      return `${before}${newHref}${mid}${newText}${end}`;
+    });
+  }
+
+  return updated;
+}
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
     const allContent: ScannedContent[] = [];
 
-    for (const { file, name } of HTML_FILES) {
+    for (const { file } of HTML_FILES) {
       try {
         const { content: html } = await githubGet(file);
         const sections = detectSections(html);
         allContent.push(
+          ...scanMeta(html, file),
+          ...scanSections(html, file),
+          ...scanNavLinks(html, file),
+          ...scanListItems(html, file, sections),
+          ...scanLinks(html, file, sections),
           ...scanTextFields(html, file, sections),
           ...scanImages(html, file, sections),
           ...scanTestimonials(html, file, sections),
@@ -236,8 +668,9 @@ export async function GET() {
     for (const item of allContent) {
       const pageName = HTML_FILES.find(f => f.file === item.file)?.name || item.file;
       if (!grouped[pageName]) grouped[pageName] = {};
-      if (!grouped[pageName][item.section]) grouped[pageName][item.section] = [];
-      grouped[pageName][item.section].push(item);
+      const sectionKey = 'section' in item ? (item as any).section : item.type;
+      if (!grouped[pageName][sectionKey]) grouped[pageName][sectionKey] = [];
+      grouped[pageName][sectionKey].push(item);
     }
 
     return NextResponse.json({ success: true, content: allContent, grouped });
@@ -253,6 +686,11 @@ export async function POST(request: NextRequest) {
         | { type: 'text'; id: string; className: string; file: string; occurrence: number; newText: string }
         | { type: 'image'; id: string; file: string; oldSrc: string; occurrence: number; newSrc: string; newAlt: string }
         | { type: 'testimonial'; id: string; file: string; occurrence: number; newBadge: string; newText: string; newAuthor: string; newPosition: string }
+        | { type: 'section-visibility'; file: string; selectorKey: string; visible: boolean }
+        | { type: 'meta'; file: string; metaKey: 'title' | 'description'; newValue: string }
+        | { type: 'nav-link'; file: string; occurrence: number; newText: string; newHref: string }
+        | { type: 'list-item'; file: string; itemClass: string; index: number; newText: string; visible: boolean }
+        | { type: 'link'; file: string; className: string; occurrence: number; newHref: string; newText: string }
       >;
     };
 
@@ -279,6 +717,16 @@ export async function POST(request: NextRequest) {
           html = replaceImage(html, change.oldSrc, change.occurrence, change.newSrc, change.newAlt);
         } else if (change.type === 'testimonial') {
           html = replaceTestimonial(html, change.occurrence, change.newBadge, change.newText, change.newAuthor, change.newPosition);
+        } else if (change.type === 'section-visibility') {
+          html = toggleSectionVisibility(html, change.selectorKey, change.visible);
+        } else if (change.type === 'meta') {
+          html = updateMeta(html, change.metaKey, change.newValue);
+        } else if (change.type === 'nav-link') {
+          html = updateNavLink(html, change.occurrence, change.newText, change.newHref);
+        } else if (change.type === 'list-item') {
+          html = updateListItem(html, change.itemClass, change.index, change.newText, change.visible);
+        } else if (change.type === 'link') {
+          html = updateLink(html, change.className, change.occurrence, change.newHref, change.newText);
         }
       }
 

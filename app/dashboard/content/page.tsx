@@ -1,60 +1,82 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, Loader2, CheckCircle, AlertCircle, RefreshCw, ChevronDown, ChevronRight, Image as ImageIcon, MessageSquare, FileText, X } from 'lucide-react';
+import {
+  Eye, EyeOff, ChevronDown, ChevronUp,
+  Loader2, Upload, FileText, Image as ImageIcon,
+  MessageSquare, Link as LinkIcon, List, Globe,
+} from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface ScannedField {
-  id: string;
-  file: string;
-  className: string;
-  tag: string;
-  text: string;
-  section: string;
-  occurrence: number;
-  type: 'text';
+  id: string; file: string; className: string; tag: string;
+  text: string; section: string; occurrence: number; type: 'text';
 }
-
 interface ScannedImage {
-  id: string;
-  file: string;
-  src: string;
-  alt: string;
-  section: string;
-  occurrence: number;
-  type: 'image';
+  id: string; file: string; src: string; alt: string;
+  section: string; occurrence: number; type: 'image';
 }
-
 interface ScannedTestimonial {
-  id: string;
-  file: string;
-  badge: string;
-  text: string;
-  author: string;
-  position: string;
-  section: string;
-  occurrence: number;
-  type: 'testimonial';
+  id: string; file: string; badge: string; text: string;
+  author: string; position: string; section: string; occurrence: number; type: 'testimonial';
+}
+interface ScannedSection {
+  id: string; file: string; tag: string; htmlId: string; htmlClass: string;
+  label: string; visible: boolean; selectorKey: string; type: 'section';
+}
+interface ScannedMeta {
+  id: string; file: string; metaKey: 'title' | 'description'; value: string; type: 'meta';
+}
+interface ScannedNavLink {
+  id: string; file: string; href: string; text: string; occurrence: number; type: 'nav-link';
+}
+interface ScannedListItem {
+  id: string; file: string; itemClass: string; index: number; text: string;
+  visible: boolean; section: string; type: 'list-item';
+}
+interface ScannedLink {
+  id: string; file: string; className: string; href: string; text: string;
+  occurrence: number; section: string; type: 'link';
 }
 
-type ScannedContent = ScannedField | ScannedImage | ScannedTestimonial;
+type AnyItem = ScannedField | ScannedImage | ScannedTestimonial | ScannedSection | ScannedMeta | ScannedNavLink | ScannedListItem | ScannedLink;
 
-type Change =
-  | { type: 'text'; id: string; className: string; file: string; occurrence: number; newText: string }
-  | { type: 'image'; id: string; file: string; oldSrc: string; occurrence: number; newSrc: string; newAlt: string }
-  | { type: 'testimonial'; id: string; file: string; occurrence: number; newBadge: string; newText: string; newAuthor: string; newPosition: string };
+// ── Page tabs ─────────────────────────────────────────────────────────────────
+
+const PAGE_TABS = [
+  { label: 'Home', file: 'index.html' },
+  { label: 'Coaching', file: 'coaching.html' },
+  { label: 'About', file: 'about.html' },
+  { label: 'System', file: 'system.html' },
+  { label: 'Contact', file: 'contact.html' },
+];
+
+const LIST_ITEM_GROUPS = [
+  { itemClass: 'trusted-name', label: 'NFL Teams' },
+  { itemClass: 'trusted-name-sm', label: 'NCAA Teams' },
+  { itemClass: 'tag', label: 'System Tags' },
+  { itemClass: 'problem-item', label: 'Problem Points' },
+  { itemClass: 'result-item', label: 'Results List' },
+  { itemClass: 'process-card-new', label: 'Process Steps (Title)' },
+  { itemClass: 'process-card-new-desc', label: 'Process Steps (Description)' },
+];
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ContentPage() {
-  const [activeTab, setActiveTab] = useState('Home');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const { toast } = useToast();
 
-  const [grouped, setGrouped] = useState<Record<string, Record<string, ScannedContent[]>>>({});
-  const [changes, setChanges] = useState<Change[]>([]);
-  const [editValues, setEditValues] = useState<Record<string, any>>({});
-
+  const [activePage, setActivePage] = useState('index.html');
+  const [content, setContent] = useState<AnyItem[]>([]);
+  const [changes, setChanges] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+
+  // Local edit state (mirrors change values, initialised from item on first edit)
+  const [editValues, setEditValues] = useState<Record<string, any>>({});
 
   useEffect(() => {
     loadContent();
@@ -66,469 +88,558 @@ export default function ContentPage() {
       const res = await fetch('/api/site-content');
       const data = await res.json();
       if (data.success) {
-        setGrouped(data.grouped);
-        setChanges([]);
+        setContent(data.content);
+        setChanges({});
         setEditValues({});
+      } else {
+        toast({ title: 'Error loading content', description: data.error });
       }
     } catch (err) {
-      console.error('Failed to load content:', err);
+      toast({ title: 'Failed to load content' });
     }
     setLoading(false);
   };
 
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  const pageItems = content.filter(item => item.file === activePage);
+
+  const getItems = <T extends AnyItem>(type: T['type']): T[] =>
+    pageItems.filter(item => item.type === type) as T[];
+
+  const getListItemsByClass = (itemClass: string): ScannedListItem[] =>
+    pageItems.filter(
+      item => item.type === 'list-item' && (item as ScannedListItem).itemClass === itemClass
+    ) as ScannedListItem[];
+
+  const getEditVal = (id: string, field: string, fallback: any) =>
+    editValues[id]?.[field] !== undefined ? editValues[id][field] : fallback;
+
+  const setEdit = (id: string, field: string, value: any) => {
+    setEditValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
   };
 
-  const hasChangesForItem = (id: string) => {
-    return changes.some(c => c.id === id);
+  const upsertChange = (id: string, changeData: any) => {
+    setChanges(prev => ({ ...prev, [id]: changeData }));
   };
 
-  const getChangeForItem = (id: string) => {
-    return changes.find(c => c.id === id);
+  const toggleExpand = (key: string) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const updateEditValue = (id: string, field: string, value: any) => {
-    setEditValues(prev => ({
-      ...prev,
-      [id]: { ...(prev[id] || {}), [field]: value }
-    }));
-  };
+  const isExpanded = (key: string, defaultOpen = true) =>
+    expandedSections[key] !== undefined ? expandedSections[key] : defaultOpen;
 
-  const saveTextChange = (item: ScannedField) => {
-    const newText = editValues[item.id]?.text ?? item.text;
-    if (newText === item.text) return;
-    const existingIdx = changes.findIndex(c => c.id === item.id);
-    const newChange: Change = {
-      type: 'text',
-      id: item.id,
-      className: item.className,
-      file: item.file,
-      occurrence: item.occurrence,
-      newText,
-    };
-    if (existingIdx >= 0) {
-      setChanges(prev => { const u = [...prev]; u[existingIdx] = newChange; return u; });
-    } else {
-      setChanges(prev => [...prev, newChange]);
-    }
-  };
+  const changeCount = Object.keys(changes).length;
 
-  const saveImageChange = (item: ScannedImage, src?: string, alt?: string) => {
-    const newSrc = src ?? editValues[item.id]?.src ?? item.src;
-    const newAlt = alt ?? editValues[item.id]?.alt ?? item.alt;
-    const existingIdx = changes.findIndex(c => c.id === item.id);
-    const newChange: Change = {
-      type: 'image',
-      id: item.id,
-      file: item.file,
-      oldSrc: item.src,
-      occurrence: item.occurrence,
-      newSrc,
-      newAlt,
-    };
-    if (existingIdx >= 0) {
-      setChanges(prev => { const u = [...prev]; u[existingIdx] = newChange; return u; });
-    } else {
-      setChanges(prev => [...prev, newChange]);
-    }
-  };
-
-  const saveTestimonialChange = (item: ScannedTestimonial) => {
-    const newBadge = editValues[item.id]?.badge ?? item.badge;
-    const newText = editValues[item.id]?.text ?? item.text;
-    const newAuthor = editValues[item.id]?.author ?? item.author;
-    const newPosition = editValues[item.id]?.position ?? item.position;
-    const existingIdx = changes.findIndex(c => c.id === item.id);
-    const newChange: Change = {
-      type: 'testimonial',
-      id: item.id,
-      file: item.file,
-      occurrence: item.occurrence,
-      newBadge,
-      newText,
-      newAuthor,
-      newPosition,
-    };
-    if (existingIdx >= 0) {
-      setChanges(prev => { const u = [...prev]; u[existingIdx] = newChange; return u; });
-    } else {
-      setChanges(prev => [...prev, newChange]);
-    }
-  };
-
-  const handleImageUpload = async (item: ScannedImage, file: File) => {
-    setUploading(item.id);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.success) {
-        updateEditValue(item.id, 'src', data.path);
-        saveImageChange(item, data.path);
-        setStatus({ type: 'success', message: 'Image uploaded! Click "Publish" to apply.' });
-        setTimeout(() => setStatus(null), 3000);
-      } else {
-        setStatus({ type: 'error', message: 'Failed to upload image' });
-      }
-    } catch {
-      setStatus({ type: 'error', message: 'Upload failed' });
-    }
-    setUploading(null);
-  };
+  // ── Publish ──────────────────────────────────────────────────────────────────
 
   const handlePublish = async () => {
-    if (changes.length === 0) return;
+    if (changeCount === 0) return;
     setPublishing(true);
-    setStatus(null);
+
+    // Convert changes record to array for API
+    const changesArray = Object.values(changes);
+
     try {
       const res = await fetch('/api/site-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ changes }),
+        body: JSON.stringify({ changes: changesArray }),
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: `Published ${changes.length} change${changes.length > 1 ? 's' : ''} to your website!` });
-        setTimeout(() => { setStatus(null); loadContent(); }, 3000);
+        toast({ title: 'Published successfully!', description: `${changeCount} change${changeCount !== 1 ? 's' : ''} published to your website.` });
+        setTimeout(() => loadContent(), 1500);
       } else {
-        setStatus({ type: 'error', message: data.error || 'Failed to publish' });
+        toast({ title: 'Publish failed', description: data.error });
       }
     } catch {
-      setStatus({ type: 'error', message: 'Network error. Please try again.' });
+      toast({ title: 'Network error', description: 'Please try again.' });
     }
     setPublishing(false);
   };
 
-  /* ────── RENDERERS ────── */
+  // ── Sub-renderers ─────────────────────────────────────────────────────────────
 
-  const renderTextItem = (item: ScannedField) => {
-    const isChanged = hasChangesForItem(item.id);
-    const change = getChangeForItem(item.id);
-    const displayValue = (change && change.type === 'text') ? change.newText : item.text;
-    const currentValue = editValues[item.id]?.text ?? displayValue;
-
+  const CollapsibleCard = ({
+    cardKey,
+    title,
+    badge,
+    dimmed = false,
+    rightSlot,
+    defaultOpen = false,
+    children,
+  }: {
+    cardKey: string;
+    title: string;
+    badge?: React.ReactNode;
+    dimmed?: boolean;
+    rightSlot?: React.ReactNode;
+    defaultOpen?: boolean;
+    children: React.ReactNode;
+  }) => {
+    const open = isExpanded(cardKey, defaultOpen);
     return (
-      <div key={item.id} className={`bg-zinc-950 border rounded-lg p-4 transition-all ${isChanged ? 'border-sky-500/40 shadow-md shadow-sky-500/5' : 'border-zinc-800'}`}>
-        <div className="flex items-start gap-3">
-          <FileText className="w-4 h-4 text-sky-500 mt-2 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            {isChanged && (
-              <span className="inline-block text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded mb-2 font-medium">Changed</span>
-            )}
-            <textarea
-              value={currentValue}
-              onChange={(e) => updateEditValue(item.id, 'text', e.target.value)}
-              onBlur={() => saveTextChange(item)}
-              rows={Math.max(1, Math.min(Math.ceil(currentValue.length / 70), 4))}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2.5 text-white text-sm leading-relaxed focus:outline-none focus:border-sky-500 transition-colors resize-none placeholder:text-zinc-600"
-              placeholder="Enter text..."
-            />
+      <div className={`border border-zinc-800 rounded-xl overflow-hidden transition-opacity ${dimmed ? 'opacity-50' : ''}`}>
+        <button
+          type="button"
+          onClick={() => toggleExpand(cardKey)}
+          className="w-full flex items-center justify-between px-6 py-4 bg-zinc-900 hover:bg-zinc-800/60 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            {open ? <ChevronUp className="w-4 h-4 text-sky-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
+            <span className="text-white font-semibold text-sm">{title}</span>
+            {badge}
           </div>
-        </div>
+          {rightSlot}
+        </button>
+        {open && (
+          <div className="px-6 pb-6 pt-4 bg-zinc-900/40 space-y-3">
+            {children}
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderImageItem = (item: ScannedImage) => {
-    const isChanged = hasChangesForItem(item.id);
-    const change = getChangeForItem(item.id);
-    const displaySrc = (change && change.type === 'image') ? change.newSrc : item.src;
-    const displayAlt = (change && change.type === 'image') ? change.newAlt : item.alt;
-    const currentSrc = editValues[item.id]?.src ?? displaySrc;
-    const currentAlt = editValues[item.id]?.alt ?? displayAlt;
-    const isUploading = uploading === item.id;
+  // SEO / Meta card
+  const renderSEOCard = () => {
+    const metas = getItems<ScannedMeta>('meta');
+    const titleItem = metas.find(m => m.metaKey === 'title');
+    const descItem = metas.find(m => m.metaKey === 'description');
 
     return (
-      <div key={item.id} className={`bg-zinc-950 border rounded-lg p-4 transition-all ${isChanged ? 'border-sky-500/40 shadow-md shadow-sky-500/5' : 'border-zinc-800'}`}>
-        <div className="flex items-start gap-4">
-          {/* Thumbnail */}
-          <div className="flex-shrink-0 w-28 h-28 bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex items-center justify-center">
-            {currentSrc ? (
-              <img
-                src={`/${currentSrc}`}
-                alt={currentAlt}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  (e.target as HTMLImageElement).parentElement!.innerHTML = '<div style="color:#52525b;font-size:11px;text-align:center;padding:16px">Preview unavailable</div>';
-                }}
-              />
-            ) : (
-              <ImageIcon className="w-10 h-10 text-zinc-700" />
-            )}
-          </div>
-
-          {/* Controls */}
-          <div className="flex-1 min-w-0 space-y-3">
-            {isChanged && (
-              <span className="inline-block text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded font-medium">Changed</span>
-            )}
-
+      <CollapsibleCard cardKey={`${activePage}-seo`} title="SEO & Meta" defaultOpen={true}>
+        <div className="space-y-4">
+          {titleItem && (
             <div>
-              <label className="flex items-center gap-2 text-white text-sm font-medium mb-2">
-                <Upload className="w-4 h-4 text-sky-500" />
-                Replace Image
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImageUpload(item, file);
-                }}
-                disabled={isUploading}
-                className="w-full text-sm text-zinc-400 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-500 file:text-white hover:file:bg-sky-400 file:cursor-pointer cursor-pointer disabled:opacity-50"
-              />
-              {isUploading && (
-                <div className="flex items-center gap-2 mt-2 text-sky-400 text-xs">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Uploading...
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-zinc-500 text-xs mb-1 block">Description</label>
+              <label className="text-zinc-400 text-xs mb-1 block font-medium">Page Title</label>
               <input
                 type="text"
-                value={currentAlt}
-                onChange={(e) => updateEditValue(item.id, 'alt', e.target.value)}
-                onBlur={() => saveImageChange(item)}
-                placeholder="Describe the image..."
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors placeholder:text-zinc-600"
+                value={getEditVal(titleItem.id, 'value', titleItem.value)}
+                onChange={e => setEdit(titleItem.id, 'value', e.target.value)}
+                onBlur={e => {
+                  const val = e.target.value;
+                  if (val !== titleItem.value) {
+                    upsertChange(titleItem.id, { type: 'meta', file: titleItem.file, metaKey: 'title', newValue: val });
+                  }
+                }}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors"
+                placeholder="Page title..."
               />
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderTestimonialItem = (item: ScannedTestimonial) => {
-    const isChanged = hasChangesForItem(item.id);
-    const change = getChangeForItem(item.id);
-    const displayBadge = (change && change.type === 'testimonial') ? change.newBadge : item.badge;
-    const displayText = (change && change.type === 'testimonial') ? change.newText : item.text;
-    const displayAuthor = (change && change.type === 'testimonial') ? change.newAuthor : item.author;
-    const displayPosition = (change && change.type === 'testimonial') ? change.newPosition : item.position;
-
-    const currentBadge = editValues[item.id]?.badge ?? displayBadge;
-    const currentText = editValues[item.id]?.text ?? displayText;
-    const currentAuthor = editValues[item.id]?.author ?? displayAuthor;
-    const currentPosition = editValues[item.id]?.position ?? displayPosition;
-
-    return (
-      <div key={item.id} className={`bg-zinc-950 border rounded-lg p-4 transition-all ${isChanged ? 'border-sky-500/40 shadow-md shadow-sky-500/5' : 'border-zinc-800'}`}>
-        <div className="flex items-start gap-3">
-          <MessageSquare className="w-4 h-4 text-teal-500 mt-2 flex-shrink-0" />
-          <div className="flex-1 min-w-0 space-y-3">
-            {isChanged && (
-              <span className="inline-block text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded font-medium">Changed</span>
-            )}
-
-            <div>
-              <label className="text-zinc-500 text-xs mb-1 block">Label</label>
-              <input
-                type="text"
-                value={currentBadge}
-                onChange={(e) => updateEditValue(item.id, 'badge', e.target.value)}
-                onBlur={() => saveTestimonialChange(item)}
-                placeholder="e.g., NFL Athlete"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors placeholder:text-zinc-600"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-500 text-xs mb-1 block">Quote</label>
-              <textarea
-                value={currentText}
-                onChange={(e) => updateEditValue(item.id, 'text', e.target.value)}
-                onBlur={() => saveTestimonialChange(item)}
-                placeholder="The testimonial quote..."
-                rows={3}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-white text-sm leading-relaxed focus:outline-none focus:border-sky-500 transition-colors resize-none placeholder:text-zinc-600"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-zinc-500 text-xs mb-1 block">Name</label>
-                <input
-                  type="text"
-                  value={currentAuthor}
-                  onChange={(e) => updateEditValue(item.id, 'author', e.target.value)}
-                  onBlur={() => saveTestimonialChange(item)}
-                  placeholder="John Doe"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors placeholder:text-zinc-600"
-                />
-              </div>
-              <div>
-                <label className="text-zinc-500 text-xs mb-1 block">Title</label>
-                <input
-                  type="text"
-                  value={currentPosition}
-                  onChange={(e) => updateEditValue(item.id, 'position', e.target.value)}
-                  onBlur={() => saveTestimonialChange(item)}
-                  placeholder="CEO, Company"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors placeholder:text-zinc-600"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderContentItem = (item: ScannedContent) => {
-    if (item.type === 'text') return renderTextItem(item);
-    if (item.type === 'image') return renderImageItem(item);
-    if (item.type === 'testimonial') return renderTestimonialItem(item);
-    return null;
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-        <span className="text-zinc-400 text-lg">Loading your website content...</span>
-      </div>
-    );
-  }
-
-  const tabs = Object.keys(grouped);
-  const sections = grouped[activeTab] || {};
-  const sectionNames = Object.keys(sections);
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Edit Website Content</h1>
-        <p className="text-zinc-500 text-base">
-          Make changes below, then click Publish to update your live website.
-        </p>
-      </div>
-
-      {/* Status */}
-      {status && (
-        <div className={`flex items-center gap-3 mb-6 p-4 rounded-lg border ${
-          status.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'
-        }`}>
-          {status.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
           )}
-          <span className={`text-sm font-medium ${status.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
-            {status.message}
-          </span>
-        </div>
-      )}
-
-      {/* Sticky Publish Bar */}
-      {changes.length > 0 && (
-        <div className="sticky top-0 z-10 mb-6 p-4 bg-sky-600 rounded-lg shadow-xl shadow-sky-500/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 bg-white/20 rounded-full">
-                <span className="text-white font-bold text-sm">{changes.length}</span>
-              </div>
-              <div>
-                <p className="text-white font-semibold text-sm">Unsaved changes</p>
-                <p className="text-sky-100/70 text-xs">Publish to update your live website</p>
-              </div>
+          {descItem && (
+            <div>
+              <label className="text-zinc-400 text-xs mb-1 block font-medium">Meta Description</label>
+              <textarea
+                value={getEditVal(descItem.id, 'value', descItem.value)}
+                onChange={e => setEdit(descItem.id, 'value', e.target.value)}
+                onBlur={e => {
+                  const val = e.target.value;
+                  if (val !== descItem.value) {
+                    upsertChange(descItem.id, { type: 'meta', file: descItem.file, metaKey: 'description', newValue: val });
+                  }
+                }}
+                rows={3}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors resize-none"
+                placeholder="Meta description..."
+              />
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setChanges([]); setEditValues({}); }}
-                className="px-4 py-2 bg-white/10 text-white text-sm font-medium rounded-md hover:bg-white/20 transition-colors"
-              >
-                Discard
-              </button>
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="flex items-center gap-2 px-6 py-2 bg-white text-sky-700 text-sm font-bold rounded-md hover:bg-sky-50 transition-colors disabled:opacity-50 shadow-lg"
-              >
-                {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {publishing ? 'Publishing...' : 'Publish'}
-              </button>
-            </div>
-          </div>
+          )}
+          {!titleItem && !descItem && (
+            <p className="text-zinc-500 text-sm">No meta fields found for this page.</p>
+          )}
         </div>
-      )}
+      </CollapsibleCard>
+    );
+  };
 
-      {/* Page Tabs */}
-      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
-        {tabs.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-              activeTab === tab
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-                : 'bg-zinc-900 text-zinc-500 hover:text-white hover:bg-zinc-800 border border-zinc-800'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+  // Nav links card (index.html only)
+  const renderNavCard = () => {
+    if (activePage !== 'index.html') return null;
+    const navLinks = getItems<ScannedNavLink>('nav-link');
+    if (navLinks.length === 0) return null;
 
-      {/* Sections */}
-      {sectionNames.length === 0 ? (
-        <div className="text-center py-24 md:py-32 text-zinc-600">
-          <p className="text-lg">No content found for this page</p>
+    return (
+      <CollapsibleCard cardKey={`${activePage}-nav`} title="Navigation Links">
+        <div className="space-y-3">
+          {navLinks.map(link => {
+            const changed = !!changes[link.id];
+            return (
+              <div key={link.id} className={`bg-zinc-950 border rounded-lg p-3 space-y-2 ${changed ? 'border-sky-500/40' : 'border-zinc-800'}`}>
+                {changed && <span className="text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded font-medium">Changed</span>}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-zinc-500 text-xs mb-1 block">Text</label>
+                    <input
+                      type="text"
+                      value={getEditVal(link.id, 'text', link.text)}
+                      onChange={e => setEdit(link.id, 'text', e.target.value)}
+                      onBlur={() => {
+                        const text = getEditVal(link.id, 'text', link.text);
+                        const href = getEditVal(link.id, 'href', link.href);
+                        if (text !== link.text || href !== link.href) {
+                          upsertChange(link.id, { type: 'nav-link', file: link.file, occurrence: link.occurrence, newText: text, newHref: href });
+                        }
+                      }}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-2 text-white text-sm focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-zinc-500 text-xs mb-1 block">URL</label>
+                    <input
+                      type="text"
+                      value={getEditVal(link.id, 'href', link.href)}
+                      onChange={e => setEdit(link.id, 'href', e.target.value)}
+                      onBlur={() => {
+                        const text = getEditVal(link.id, 'text', link.text);
+                        const href = getEditVal(link.id, 'href', link.href);
+                        if (text !== link.text || href !== link.href) {
+                          upsertChange(link.id, { type: 'nav-link', file: link.file, occurrence: link.occurrence, newText: text, newHref: href });
+                        }
+                      }}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-2 text-white text-sm focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <div className="space-y-6">
-          {sectionNames.map(sectionName => {
-            const isExpanded = expandedSections[`${activeTab}-${sectionName}`] !== false;
-            const items = sections[sectionName];
-            const textCount = items.filter(i => i.type === 'text').length;
-            const imageCount = items.filter(i => i.type === 'image').length;
-            const testimonialCount = items.filter(i => i.type === 'testimonial').length;
+      </CollapsibleCard>
+    );
+  };
+
+  // Section controls
+  const renderSectionControls = () => {
+    const sections = getItems<ScannedSection>('section');
+    if (sections.length === 0) return null;
+
+    return (
+      <CollapsibleCard cardKey={`${activePage}-sections`} title="Page Sections" defaultOpen={true}>
+        <div className="space-y-2">
+          {sections.map(sec => {
+            const changeEntry = changes[sec.id];
+            const currentVisible = changeEntry !== undefined ? changeEntry.visible : sec.visible;
+            return (
+              <div
+                key={sec.id}
+                className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-opacity ${
+                  currentVisible ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800 bg-zinc-950 opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-white text-sm font-medium">{sec.label}</span>
+                  {!currentVisible && (
+                    <span className="text-[10px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded font-medium">Hidden</span>
+                  )}
+                  {changeEntry && (
+                    <span className="text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded font-medium">Changed</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newVisible = !currentVisible;
+                    upsertChange(sec.id, {
+                      type: 'section-visibility',
+                      file: sec.file,
+                      selectorKey: sec.selectorKey,
+                      visible: newVisible,
+                    });
+                  }}
+                  className="p-1.5 rounded-md hover:bg-zinc-700 transition-colors"
+                  title={currentVisible ? 'Hide section' : 'Show section'}
+                >
+                  {currentVisible
+                    ? <Eye className="w-4 h-4 text-sky-400" />
+                    : <EyeOff className="w-4 h-4 text-zinc-500" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </CollapsibleCard>
+    );
+  };
+
+  // List items (index.html special cards)
+  const renderListItemGroup = (itemClass: string, label: string) => {
+    const items = getListItemsByClass(itemClass);
+    if (items.length === 0) return null;
+
+    const isProcessTitle = itemClass === 'process-card-new';
+    const isProcessDesc = itemClass === 'process-card-new-desc';
+    const isProcess = isProcessTitle || isProcessDesc;
+    const hasVisibility = !isProcess;
+
+    return (
+      <CollapsibleCard key={`${activePage}-list-${itemClass}`} cardKey={`${activePage}-list-${itemClass}`} title={label}>
+        <div className="space-y-2">
+          {items.map(item => {
+            const changeEntry = changes[item.id];
+            const currentText = getEditVal(item.id, 'text', item.text);
+            const currentVisible = changeEntry !== undefined ? changeEntry.visible : item.visible;
+            const changed = !!changeEntry;
 
             return (
-              <div key={sectionName} className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => toggleSection(`${activeTab}-${sectionName}`)}
-                  className="w-full flex items-center justify-between px-6 py-5 hover:bg-zinc-800/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    {isExpanded ? (
-                      <ChevronDown className="w-5 h-5 text-sky-500" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5 text-zinc-600" />
-                    )}
-                    <h3 className="text-white font-semibold">{sectionName}</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {textCount > 0 && (
-                      <span className="text-xs text-zinc-500 bg-zinc-800 px-3 py-1 rounded-full">{textCount} text</span>
-                    )}
-                    {imageCount > 0 && (
-                      <span className="text-xs text-zinc-500 bg-zinc-800 px-3 py-1 rounded-full">{imageCount} images</span>
-                    )}
-                    {testimonialCount > 0 && (
-                      <span className="text-xs text-zinc-500 bg-zinc-800 px-3 py-1 rounded-full">{testimonialCount} reviews</span>
-                    )}
-                  </div>
-                </button>
-
-                {isExpanded && (
-                  <div className="px-6 pb-6 space-y-3">
-                    {items.map(item => renderContentItem(item))}
-                  </div>
+              <div
+                key={item.id}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+                  changed ? 'border-sky-500/40 bg-zinc-950' : 'border-zinc-800 bg-zinc-950'
+                } ${!currentVisible && hasVisibility ? 'opacity-50' : ''}`}
+              >
+                <input
+                  type="text"
+                  value={currentText}
+                  onChange={e => setEdit(item.id, 'text', e.target.value)}
+                  onBlur={() => {
+                    const text = getEditVal(item.id, 'text', item.text);
+                    const vis = changeEntry !== undefined ? changeEntry.visible : item.visible;
+                    upsertChange(item.id, {
+                      type: 'list-item',
+                      file: item.file,
+                      itemClass: item.itemClass,
+                      index: item.index,
+                      newText: text,
+                      visible: vis,
+                    });
+                  }}
+                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-sky-500 transition-colors"
+                />
+                {hasVisibility && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = getEditVal(item.id, 'text', item.text);
+                      const newVisible = !currentVisible;
+                      upsertChange(item.id, {
+                        type: 'list-item',
+                        file: item.file,
+                        itemClass: item.itemClass,
+                        index: item.index,
+                        newText: text,
+                        visible: newVisible,
+                      });
+                    }}
+                    className="p-1.5 rounded hover:bg-zinc-700 transition-colors flex-shrink-0"
+                    title={currentVisible ? 'Hide' : 'Show'}
+                  >
+                    {currentVisible
+                      ? <Eye className="w-4 h-4 text-sky-400" />
+                      : <EyeOff className="w-4 h-4 text-zinc-500" />}
+                  </button>
                 )}
               </div>
             );
           })}
         </div>
-      )}
+      </CollapsibleCard>
+    );
+  };
+
+  const renderListItemsSection = () => {
+    if (activePage !== 'index.html') return null;
+    return (
+      <>
+        {LIST_ITEM_GROUPS.map(({ itemClass, label }) =>
+          renderListItemGroup(itemClass, label)
+        )}
+      </>
+    );
+  };
+
+  // Text fields by section
+  const renderTextSections = () => {
+    const textItems = getItems<ScannedField>('text');
+    const imageItems = getItems<ScannedImage>('image');
+    const testimonialItems = getItems<ScannedTestimonial>('testimonial');
+
+    // Group by section
+    const sectionMap: Record<string, { texts: ScannedField[]; images: ScannedImage[]; testimonials: ScannedTestimonial[] }> = {};
+    for (const item of textItems) {
+      if (!sectionMap[item.section]) sectionMap[item.section] = { texts: [], images: [], testimonials: [] };
+      sectionMap[item.section].texts.push(item);
+    }
+    for (const item of imageItems) {
+      if (!sectionMap[item.section]) sectionMap[item.section] = { texts: [], images: [], testimonials: [] };
+      sectionMap[item.section].images.push(item);
+    }
+    for (const item of testimonialItems) {
+      if (!sectionMap[item.section]) sectionMap[item.section] = { texts: [], images: [], testimonials: [] };
+      sectionMap[item.section].testimonials.push(item);
+    }
+
+    return Object.entries(sectionMap).map(([sectionName, { texts, images, testimonials }]) => (
+      <CollapsibleCard key={`${activePage}-section-${sectionName}`} cardKey={`${activePage}-section-${sectionName}`} title={sectionName}>
+        <div className="space-y-3">
+          {texts.map(item => {
+            const changed = !!changes[item.id];
+            const currentVal = getEditVal(item.id, 'text', item.text);
+            return (
+              <div key={item.id} className={`bg-zinc-950 border rounded-lg p-3 ${changed ? 'border-sky-500/40' : 'border-zinc-800'}`}>
+                <div className="flex items-start gap-2">
+                  <FileText className="w-3.5 h-3.5 text-sky-500 mt-2.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {changed && <span className="text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded mb-1.5 inline-block font-medium">Changed</span>}
+                    <textarea
+                      value={currentVal}
+                      onChange={e => setEdit(item.id, 'text', e.target.value)}
+                      onBlur={() => {
+                        const val = getEditVal(item.id, 'text', item.text);
+                        if (val !== item.text) {
+                          upsertChange(item.id, { type: 'text', id: item.id, className: item.className, file: item.file, occurrence: item.occurrence, newText: val });
+                        }
+                      }}
+                      rows={Math.max(1, Math.min(Math.ceil(currentVal.length / 70), 4))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-2 text-white text-sm leading-relaxed focus:outline-none focus:border-sky-500 transition-colors resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {images.map(item => {
+            const changed = !!changes[item.id];
+            const currentAlt = getEditVal(item.id, 'alt', item.alt);
+            return (
+              <div key={item.id} className={`bg-zinc-950 border rounded-lg p-3 ${changed ? 'border-sky-500/40' : 'border-zinc-800'}`}>
+                <div className="flex items-start gap-3">
+                  <div className="w-20 h-20 flex-shrink-0 bg-zinc-900 border border-zinc-800 rounded overflow-hidden flex items-center justify-center">
+                    {item.src ? (
+                      <img src={`/${item.src}`} alt={item.alt} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-zinc-700" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {changed && <span className="text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded mb-1.5 inline-block font-medium">Changed</span>}
+                    <label className="text-zinc-500 text-xs mb-1 block">Alt Text</label>
+                    <input
+                      type="text"
+                      value={currentAlt}
+                      onChange={e => setEdit(item.id, 'alt', e.target.value)}
+                      onBlur={() => {
+                        const alt = getEditVal(item.id, 'alt', item.alt);
+                        const src = getEditVal(item.id, 'src', item.src);
+                        if (alt !== item.alt || src !== item.src) {
+                          upsertChange(item.id, { type: 'image', id: item.id, file: item.file, oldSrc: item.src, occurrence: item.occurrence, newSrc: src, newAlt: alt });
+                        }
+                      }}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-2 text-white text-sm focus:outline-none focus:border-sky-500"
+                      placeholder="Image description..."
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {testimonials.map(item => {
+            const changed = !!changes[item.id];
+            const currentBadge = getEditVal(item.id, 'badge', item.badge);
+            const currentText = getEditVal(item.id, 'text', item.text);
+            const currentAuthor = getEditVal(item.id, 'author', item.author);
+            const currentPosition = getEditVal(item.id, 'position', item.position);
+
+            const saveTestimonial = () => {
+              upsertChange(item.id, {
+                type: 'testimonial', id: item.id, file: item.file, occurrence: item.occurrence,
+                newBadge: getEditVal(item.id, 'badge', item.badge),
+                newText: getEditVal(item.id, 'text', item.text),
+                newAuthor: getEditVal(item.id, 'author', item.author),
+                newPosition: getEditVal(item.id, 'position', item.position),
+              });
+            };
+
+            return (
+              <div key={item.id} className={`bg-zinc-950 border rounded-lg p-3 space-y-2 ${changed ? 'border-sky-500/40' : 'border-zinc-800'}`}>
+                {changed && <span className="text-[10px] text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded font-medium">Changed</span>}
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                  <input type="text" value={currentBadge} onChange={e => setEdit(item.id, 'badge', e.target.value)} onBlur={saveTestimonial} placeholder="Badge/label" className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-sky-500" />
+                </div>
+                <textarea value={currentText} onChange={e => setEdit(item.id, 'text', e.target.value)} onBlur={saveTestimonial} rows={3} placeholder="Quote..." className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-2 text-white text-sm resize-none focus:outline-none focus:border-sky-500" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" value={currentAuthor} onChange={e => setEdit(item.id, 'author', e.target.value)} onBlur={saveTestimonial} placeholder="Author name" className="bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-sky-500" />
+                  <input type="text" value={currentPosition} onChange={e => setEdit(item.id, 'position', e.target.value)} onBlur={saveTestimonial} placeholder="Title / Company" className="bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-sky-500" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CollapsibleCard>
+    ));
+  };
+
+  // ── Main render ───────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+        <span className="text-zinc-400 text-lg">Loading site content...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Site Content</h1>
+          <p className="text-zinc-500 text-sm mt-1">Edit your website content and publish changes live.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handlePublish}
+          disabled={changeCount === 0 || publishing}
+          className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-sky-500/20"
+        >
+          {publishing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4" />
+          )}
+          Publish Changes
+          {changeCount > 0 && (
+            <span className="ml-1 bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              {changeCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Page Tabs */}
+      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-1">
+        {PAGE_TABS.map(({ label, file }) => (
+          <button
+            key={file}
+            type="button"
+            onClick={() => setActivePage(file)}
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+              activePage === file
+                ? 'bg-sky-600 text-white shadow-lg shadow-sky-500/20'
+                : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-800'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content Cards */}
+      <div className="space-y-4">
+        {renderSEOCard()}
+        {renderNavCard()}
+        {renderSectionControls()}
+        {renderListItemsSection()}
+        {renderTextSections()}
+      </div>
     </div>
   );
 }
